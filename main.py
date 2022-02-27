@@ -1,12 +1,13 @@
-import sys
-from PyQt5.QtWidgets import QApplication
+import tkinter as tk
 from window import TetrisWindow
 
 
 def main():
-    app = QApplication(sys.argv)
-    ex = TetrisWindow()
-    sys.exit(app.exec_())
+    root = tk.Tk()
+    game = TetrisWindow(master = root)
+    root.title('Tetris')
+    root.iconbitmap('./images/T.ico')
+    game.mainloop()
 
 
 if __name__ == '__main__':

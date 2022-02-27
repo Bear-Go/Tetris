@@ -1,43 +1,92 @@
+import random
+from threading import Lock
+
+
 class Tetris:
+    FIELD_HEIGHT = 20
+    FIELD_WIDTH = 10
+    SCORE_PER_ELIMINATED_LINES = (0, 40, 100, 300, 1200)
+    Tetrominos = [
+        [(0, 0), (0, 1), (1, 0), (1, 1)],  # O
+        [(0, 0), (0, 1), (1, 1), (2, 1)],  # L
+        [(0, 1), (1, 1), (2, 1), (2, 0)],  # J
+        [(0, 1), (1, 0), (1, 1), (2, 0)],  # Z
+        [(0, 1), (1, 0), (1, 1), (2, 1)],  # T
+        [(0, 0), (1, 0), (1, 1), (2, 1)],  # S
+        [(0, 1), (1, 1), (2, 1), (3, 1)],  # I
+    ]
+
     def __init__(self):
-        self.speed = 0
+        self.tetromino_offset = None
+        self.tetromino_color = None
+        self.tetromino = None
+        self.field = [[0 for _ in range(Tetris.FIELD_WIDTH)] for _ in range(Tetris.FIELD_HEIGHT)]
         self.score = 0
-        self.x = 6
-        self.y = 1
-        self.board = [[0 for _ in range(15)] for _ in range(15)]
+        self.level = 0
+        self.total_lines_eliminated = 0
+        self.game_over = False
+        self.move_lock = Lock()
+        self.reset_tetromino()
 
-    def player(self, input_by_window=False, move=None):
-        # 如果有上下左右按下，则根据当前位置，判断下一时刻位置
-        if not input_by_window:
-            move = int(input('move: '))
-        if move == 2:
-            self.x -= 1
-        elif move == 4:
-            self.x += 1
+    def reset_tetromino(self):
+        num = random.randint(0, 6)
+        self.tetromino = Tetris.Tetrominos[num]
+        self.tetromino_color = num + 1
+        self.tetromino_offset = [-2, Tetris.FIELD_WIDTH // 2]
+        self.game_over = any(not self.is_cell_free(r, c) for (r, c) in self.get_tetromino_coords())
 
-    def check(self):
+    def get_tetromino_coords(self):
+        return [(r + self.tetromino_offset[0], c + self.tetromino_offset[1]) for (r, c) in self.tetromino]
 
-        return 0
+    def apply_tetromino(self):
+        for (r, c) in self.get_tetromino_coords():
+            self.field[r][c] = self.tetromino_color
 
-    def show(self):
-        for i in range(15):
-            print('|', end='')
+        new_field = [row for row in self.field if any(tile == 0 for tile in row)]
+        lines_eliminated = len(self.field) - len(new_field)
+        self.total_lines_eliminated += lines_eliminated
+        self.field = [[0] * Tetris.FIELD_WIDTH for _ in range(lines_eliminated)] + new_field
+        self.score += Tetris.SCORE_PER_ELIMINATED_LINES[lines_eliminated] * (self.level + 1)
+        self.level = self.total_lines_eliminated // 10
+        self.reset_tetromino()
 
-            for j in range(15):
-                if self.board[i][j] == 0:
-                    print(' ', end='')
-                elif self.board[i][j] == 1:
-                    print('*', end='')
-                elif self.board[i][j] == 2:
-                    print('+', end='')
+    def get_color(self, r, c):
+        return self.tetromino_color if (r, c) in self.get_tetromino_coords() else self.field[r][c]
 
-            print('|\n', end='')
+    def is_cell_free(self, r, c):
+        return r < Tetris.FIELD_HEIGHT and 0 <= c < Tetris.FIELD_WIDTH and (r < 0 or self.field[r][c] == 0)
 
-        for i in range(15):
-            print('-', end='')
-        print('--\n', end='')
+    def move(self, dr, dc):
+        with self.move_lock:
+            if self.game_over:
+                return
 
-    def play(self):
-        while True:
-            self.show()
-            self.player()
+            if all(self.is_cell_free(r + dr, c + dc) for (r, c) in self.get_tetromino_coords()):
+                self.tetromino_offset = [self.tetromino_offset[0] + dr, self.tetromino_offset[1] + dc]
+            elif dr == 1 and dc == 0:
+                self.game_over = any(r < 0 for (r, c) in self.get_tetromino_coords())
+                if not self.game_over:
+                    self.apply_tetromino()
+
+    def rotate(self):
+        with self.move_lock:
+            if self.game_over:
+                self.__init__()
+                return
+
+            ys = [r for (r, c) in self.tetromino]
+            xs = [c for (r, c) in self.tetromino]
+            size = max(max(ys) - min(ys), max(xs) - min(xs))
+            rotated_tetromino = [(c, size - r) for (r, c) in self.tetromino]
+            wallkick_offset = self.tetromino_offset[:]
+            tetromino_coord = [(r + wallkick_offset[0], c + wallkick_offset[1]) for (r, c) in rotated_tetromino]
+            min_x = min(c for r, c in tetromino_coord)
+            max_x = max(c for r, c in tetromino_coord)
+            max_y = max(r for r, c in tetromino_coord)
+            wallkick_offset[1] -= min(0, min_x)
+            wallkick_offset[1] += min(0, Tetris.FIELD_WIDTH - (1 + max_x))
+            wallkick_offset[0] += min(0, Tetris.FIELD_HEIGHT - (1 + max_y))
+
+            tetromino_coord = [(r + wallkick_offset[0], c + wallkick_offset[1]) for (r, c) in rotated_tetromino]
+            if all(self.is_cell_free(r, c) for (r, c) in tetromino_coord):
+                self.tetromino, self.tetromino_offset = rotated_tetromino, wallkick_offset
