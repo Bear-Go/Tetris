@@ -6,7 +6,7 @@ def main():
     root = tk.Tk()
     game = TetrisWindow(master = root)
     root.title('Tetris')
-    root.iconbitmap('./images/T.ico')
+    root.iconbitmap('images/T.ico')
     game.mainloop()
 
 
